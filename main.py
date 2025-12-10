@@ -102,52 +102,6 @@ def is_port_in_use(port: int, protocol: str) -> bool:
     try:
         sock_type = socket.SOCK_STREAM if protocol == "TCP" else socket.SOCK_DGRAM
         with socket.socket(socket.AF_INET, sock_type) as s:
-            # We set REUSEADDR to check if we can bind *with* reuseaddr,
-            # which matches what socat does.
-            # However, if an existing process (socat) is running with REUSEADDR,
-            # another bind with REUSEADDR might succeed on some OSs (like Linux with SO_REUSEPORT or UDP behavior).
-            # But socat uses SO_REUSEADDR.
-            # In Linux, SO_REUSEADDR allows binding to a port in TIME_WAIT, but not one in LISTEN state (for TCP).
-            # So if socat is listening, binding should fail even with REUSEADDR (unless it's UDP multicast/broadcast or specific OS quirks).
-            # For UDP, SO_REUSEADDR allows multiple binds to the same port.
-            # If we want to prevent *conflict*, we might want to check *without* REUSEADDR to be safer?
-            # But socat uses it. If socat uses it, it means socat intends to allow sharing or overtaking.
-            # BUT, we want to know if *another* socat is already there.
-            # If socat is there (with reuseaddr), and we try to bind with reuseaddr:
-            # - TCP: Fail (EADDRINUSE). Correct.
-            # - UDP: Succeed. Incorrect (we don't want to double bind).
-
-            # So for UDP, checking with REUSEADDR is bad if we want to detect duplicates.
-            # But socat *uses* reuseaddr.
-
-            # If we check WITHOUT reuseaddr:
-            # - TCP with socat (reuseaddr): Fail (EADDRINUSE). Correct.
-            # - UDP with socat (reuseaddr): Fail (EADDRINUSE). Correct.
-
-            # So, checking WITHOUT reuseaddr seems to be the robust way to see if *anyone* is there.
-
-            # But wait, if a port is in TIME_WAIT, check WITHOUT reuseaddr will fail (saying in use),
-            # but socat (WITH reuseaddr) would succeed.
-            # So we might report a false positive for conflict if we are too strict.
-
-            # Let's try to mimic socat behavior?
-            # If socat command is `TCP4-LISTEN:8080,fork,reuseaddr`.
-            # We should probably check if we can bind WITH reuseaddr for TCP.
-
-            # For UDP, `UDP4-LISTEN:...,reuseaddr`.
-            # On Linux, SO_REUSEADDR on UDP allows multiple sockets to bind.
-            # So `is_port_in_use` will return False (not in use, i.e., bind success) even if another socat is running!
-            # That's a problem if we want to prevent duplicates.
-
-            # If the user wants to "avoid port duplication", for UDP, we probably shouldn't allow multiple socats on the same port
-            # unless intended.
-
-            # So, for UDP, maybe we should check WITHOUT reuseaddr to be sure nobody is there?
-            # But what if TIME_WAIT? UDP doesn't have TIME_WAIT.
-            # So for UDP, check without reuseaddr.
-
-            # For TCP, check WITH reuseaddr (to allow TIME_WAIT reuse).
-
             if protocol == "TCP":
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -209,7 +163,6 @@ async def create_rule(rule: RuleRequest):
     if is_port_in_use(rule.local_port, proto):
         raise HTTPException(status_code=400, detail=f"{proto} Port {rule.local_port} is already in use by another process.")
 
-    # コマンドの構築
     cmd = [
         "socat",
         f"{proto}4-LISTEN:{rule.local_port},fork,reuseaddr",
@@ -217,7 +170,6 @@ async def create_rule(rule: RuleRequest):
     ]
 
     try:
-        # サブプロセスとして実行（バックグラウンド）
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
