@@ -193,7 +193,7 @@ async def create_rule(rule: RuleRequest):
         logger.info(f"Started socat PID {proc.pid}: {cmd}")
 
         # 管理簿に登録
-        rule_info = rule.dict()
+        rule_info = rule.model_dump()
         rule_info['protocol'] = proto # Ensure uppercase
         running_processes[proc.pid] = rule_info
 
