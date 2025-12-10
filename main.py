@@ -173,7 +173,8 @@ async def create_rule(rule: RuleRequest):
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
+            start_new_session=True
         )
         
         # プロセスが即死していないか少し待って確認
