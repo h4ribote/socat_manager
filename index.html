@@ -36,8 +36,19 @@
         <!-- Create Rule Card -->
         <div class="bg-white rounded-xl shadow-md p-6 mb-8 border border-gray-100">
             <h2 class="text-xl font-semibold mb-4 text-gray-700">Add New Rule</h2>
-            <form id="addRuleForm" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <form id="addRuleForm" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                 
+                <!-- Protocol -->
+                <div class="col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Protocol</label>
+                    <div class="relative">
+                        <select id="protocol" class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-2 px-3 border bg-white">
+                            <option value="TCP">TCP</option>
+                            <option value="UDP">UDP</option>
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Local Port -->
                 <div class="col-span-1">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Local Port</label>
@@ -75,7 +86,7 @@
                 </div>
 
                 <!-- Submit Button -->
-                <div class="col-span-1 md:col-span-4 mt-2">
+                <div class="col-span-1 md:col-span-5 mt-2">
                     <button type="submit" 
                         class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2">
                         <i class="fa-solid fa-plus"></i> Start Forwarding
@@ -98,6 +109,7 @@
                     <thead>
                         <tr class="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider">
                             <th class="p-4 border-b">PID</th>
+                            <th class="p-4 border-b">Proto</th>
                             <th class="p-4 border-b">Local Port</th>
                             <th class="p-4 border-b text-center"><i class="fa-solid fa-arrow-right"></i></th>
                             <th class="p-4 border-b">Target</th>
@@ -108,7 +120,7 @@
                     <tbody id="rulesTableBody" class="text-gray-700 divide-y divide-gray-100">
                         <!-- JS will populate this -->
                         <tr>
-                            <td colspan="6" class="p-6 text-center text-gray-400">Loading rules...</td>
+                            <td colspan="7" class="p-6 text-center text-gray-400">Loading rules...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -147,15 +159,23 @@
             tbody.innerHTML = '';
 
             if (rules.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-400">No active forwarding rules.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-gray-400">No active forwarding rules.</td></tr>`;
                 return;
             }
 
             rules.forEach(rule => {
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-50 transition';
+
+                const protoClass = rule.protocol === 'UDP' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800';
+
                 tr.innerHTML = `
                     <td class="p-4 text-sm font-mono text-gray-500">#${rule.pid}</td>
+                    <td class="p-4">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${protoClass}">
+                            ${rule.protocol}
+                        </span>
+                    </td>
                     <td class="p-4 font-semibold text-indigo-700">${rule.local_port}</td>
                     <td class="p-4 text-center text-gray-400"><i class="fa-solid fa-arrow-right"></i></td>
                     <td class="p-4 font-mono">${rule.target_ip}:${rule.target_port}</td>
@@ -178,6 +198,7 @@
         // --- Add Rule ---
         document.getElementById('addRuleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const protocol = document.getElementById('protocol').value;
             const localPort = parseInt(document.getElementById('localPort').value);
             const targetIp = document.getElementById('targetIp').value;
             const targetPort = parseInt(document.getElementById('targetPort').value);
@@ -194,15 +215,21 @@
                 const res = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ local_port: localPort, target_ip: targetIp, target_port: targetPort })
+                    body: JSON.stringify({
+                        local_port: localPort,
+                        target_ip: targetIp,
+                        target_port: targetPort,
+                        protocol: protocol
+                    })
                 });
 
                 const data = await res.json();
 
                 if (!res.ok) throw new Error(data.detail || 'Failed to create rule');
 
-                showNotification(`Forwarding started: Port ${localPort} -> ${targetIp}:${targetPort}`);
+                showNotification(`${protocol} Forwarding started: Port ${localPort} -> ${targetIp}:${targetPort}`);
                 document.getElementById('addRuleForm').reset();
+                document.getElementById('protocol').value = "TCP"; // Reset select to default
                 fetchRules(); // Refresh list
 
             } catch (error) {
