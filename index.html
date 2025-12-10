@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Port Forwarding Manager</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome (Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">
+                    <i class="fa-solid fa-network-wired text-indigo-600 mr-2"></i>
+                    Port Forwarding Manager
+                </h1>
+                <p class="text-gray-500 mt-1">Manage your socat instances easily.</p>
+            </div>
+            <div id="statusIndicator" class="hidden px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-700">
+                System Active
+            </div>
+        </header>
+
+        <!-- Notification Area -->
+        <div id="notification" class="hidden mb-4 p-4 rounded-md shadow-sm"></div>
+
+        <!-- Create Rule Card -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8 border border-gray-100">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">Add New Rule</h2>
+            <form id="addRuleForm" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                
+                <!-- Local Port -->
+                <div class="col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Local Port</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-door-open text-gray-400"></i>
+                        </div>
+                        <input type="number" id="localPort" required min="1" max="65535" placeholder="8080"
+                            class="pl-10 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-2 border">
+                    </div>
+                </div>
+
+                <!-- Target IP -->
+                <div class="col-span-1 md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Target IP</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-server text-gray-400"></i>
+                        </div>
+                        <input type="text" id="targetIp" required placeholder="10.8.0.10"
+                            class="pl-10 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-2 border">
+                    </div>
+                </div>
+
+                <!-- Target Port -->
+                <div class="col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Target Port</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-bullseye text-gray-400"></i>
+                        </div>
+                        <input type="number" id="targetPort" required min="1" max="65535" placeholder="80"
+                            class="pl-10 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-2 border">
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="col-span-1 md:col-span-4 mt-2">
+                    <button type="submit" 
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Start Forwarding
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Rules List -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-gray-700">Active Forwarding Rules</h2>
+                <button onclick="fetchRules()" class="text-gray-500 hover:text-indigo-600 transition">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider">
+                            <th class="p-4 border-b">PID</th>
+                            <th class="p-4 border-b">Local Port</th>
+                            <th class="p-4 border-b text-center"><i class="fa-solid fa-arrow-right"></i></th>
+                            <th class="p-4 border-b">Target</th>
+                            <th class="p-4 border-b">Status</th>
+                            <th class="p-4 border-b text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rulesTableBody" class="text-gray-700 divide-y divide-gray-100">
+                        <!-- JS will populate this -->
+                        <tr>
+                            <td colspan="6" class="p-6 text-center text-gray-400">Loading rules...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api/rules';
+
+        // --- Notification Logic ---
+        function showNotification(message, type = 'success') {
+            const el = document.getElementById('notification');
+            el.className = `mb-4 p-4 rounded-md shadow-sm border-l-4 ${type === 'success' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-red-50 border-red-500 text-red-700'}`;
+            el.innerHTML = `<div class="flex items-center"><i class="fa-solid ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-2"></i> ${message}</div>`;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 4000);
+        }
+
+        // --- Fetch Rules ---
+        async function fetchRules() {
+            try {
+                const res = await fetch(API_URL);
+                if (!res.ok) throw new Error('Failed to fetch rules');
+                const rules = await res.json();
+                renderTable(rules);
+            } catch (error) {
+                console.error(error);
+                showNotification('Failed to load rules. Is backend running?', 'error');
+            }
+        }
+
+        // --- Render Table ---
+        function renderTable(rules) {
+            const tbody = document.getElementById('rulesTableBody');
+            tbody.innerHTML = '';
+
+            if (rules.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-400">No active forwarding rules.</td></tr>`;
+                return;
+            }
+
+            rules.forEach(rule => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50 transition';
+                tr.innerHTML = `
+                    <td class="p-4 text-sm font-mono text-gray-500">#${rule.pid}</td>
+                    <td class="p-4 font-semibold text-indigo-700">${rule.local_port}</td>
+                    <td class="p-4 text-center text-gray-400"><i class="fa-solid fa-arrow-right"></i></td>
+                    <td class="p-4 font-mono">${rule.target_ip}:${rule.target_port}</td>
+                    <td class="p-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <span class="w-2 h-2 mr-1 bg-green-500 rounded-full animate-pulse"></span>
+                            ${rule.status}
+                        </span>
+                    </td>
+                    <td class="p-4 text-right">
+                        <button onclick="deleteRule(${rule.pid})" class="text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded transition">
+                            <i class="fa-solid fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // --- Add Rule ---
+        document.getElementById('addRuleForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const localPort = parseInt(document.getElementById('localPort').value);
+            const targetIp = document.getElementById('targetIp').value;
+            const targetPort = parseInt(document.getElementById('targetPort').value);
+
+            // Basic validation
+            if (!localPort || !targetIp || !targetPort) return;
+
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ local_port: localPort, target_ip: targetIp, target_port: targetPort })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.detail || 'Failed to create rule');
+
+                showNotification(`Forwarding started: Port ${localPort} -> ${targetIp}:${targetPort}`);
+                document.getElementById('addRuleForm').reset();
+                fetchRules(); // Refresh list
+
+            } catch (error) {
+                showNotification(error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // --- Delete Rule ---
+        async function deleteRule(pid) {
+            if (!confirm(`Are you sure you want to stop the forwarding process (PID: ${pid})?`)) return;
+
+            try {
+                const res = await fetch(`${API_URL}/${pid}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error('Failed to delete rule');
+                
+                showNotification('Rule deleted successfully');
+                fetchRules();
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+
+        // Initial Load
+        fetchRules();
+    </script>
+</body>
+</html>
