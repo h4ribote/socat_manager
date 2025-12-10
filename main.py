@@ -4,6 +4,7 @@ import logging
 import re
 import socket
 from typing import Dict, List, Optional
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -12,8 +13,6 @@ from pydantic import BaseModel
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SocatManager")
-
-app = FastAPI(title="Socat Port Forward Manager")
 
 # メモリ上でプロセスを管理する辞書
 # key: pid (int), value: RuleInfo
@@ -110,9 +109,12 @@ def is_port_in_use(port: int, protocol: str) -> bool:
     except OSError:
         return True
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     scan_socat_processes()
+    yield
+
+app = FastAPI(title="Socat Port Forward Manager", lifespan=lifespan)
 
 @app.get("/")
 async def read_index():
@@ -191,7 +193,7 @@ async def create_rule(rule: RuleRequest):
         logger.info(f"Started socat PID {proc.pid}: {cmd}")
 
         # 管理簿に登録
-        rule_info = rule.dict()
+        rule_info = rule.model_dump()
         rule_info['protocol'] = proto # Ensure uppercase
         running_processes[proc.pid] = rule_info
 
